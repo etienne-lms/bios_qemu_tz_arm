@@ -287,10 +287,11 @@ mem_avail:
 
 static void tz_res_mem_carve(const void *prop, size_t plen,
 			size_t addr_size, size_t len_size,
-			void *data, size_t *dlen)
+			void *data, size_t *dlen,
+			uint64_t res_start,
+			size_t res_size)
 {
-	const uint64_t tz_res_end = (uint64_t)TZ_RES_MEM_START +
-				    TZ_RES_MEM_SIZE;
+	uint64_t tz_res_end = res_start + res_size;
 	size_t poffs;
 	size_t doffs;
 	uint64_t start;
@@ -306,6 +307,9 @@ static void tz_res_mem_carve(const void *prop, size_t plen,
 		msg("0x%" PRIx64 " 0x%" PRIx64 "\n", start, len);
 	}
 
+	msg("Carving out memory: start len\n");
+	msg("0x%" PRIx64 " 0x%" PRIx64 "\n", res_start, (long long unsigned)res_size);
+
 	poffs = 0;
 	doffs = 0;
 	while (poffs < plen) {
@@ -313,29 +317,29 @@ static void tz_res_mem_carve(const void *prop, size_t plen,
 		len = get_val(prop, &poffs, len_size);
 		end = start + len;
 
-		if (TZ_RES_MEM_START == start && TZ_RES_MEM_SIZE == len) {
+		if (res_start == start && res_size == len) {
 			/*
 			 * Remove a region
 			 */
 
-		} else if (TZ_RES_MEM_START > start && tz_res_end < end) {
+		} else if (res_start > start && tz_res_end < end) {
 			/*
 			 * Split a region
 			 */
 			put_val(data, &doffs, addr_size, start);
 			put_val(data, &doffs, len_size,
-					TZ_RES_MEM_START - start);
+					res_start - start);
 
 			put_val(data, &doffs, addr_size, tz_res_end);
 			put_val(data, &doffs, len_size, end - tz_res_end);
 
-		} else if (TZ_RES_MEM_START > start && TZ_RES_MEM_START < end) {
+		} else if (res_start > start && res_start < end) {
 			/*
 			 * Chop of the end of a region.
 			 */
 			put_val(data, &doffs, addr_size, start);
 			put_val(data, &doffs, len_size,
-					TZ_RES_MEM_START - start);
+					res_start - start);
 		} else if (tz_res_end < end) {
 			/*
 			 * Chop of the begining of a region.
@@ -348,7 +352,7 @@ static void tz_res_mem_carve(const void *prop, size_t plen,
 	*dlen = doffs;
 
 	doffs = 0;
-	msg("Carved out TZ memory from DTB memory: start len\n");
+	msg("Carved out Reserved memory from DTB memory: start len\n");
 	while (doffs < *dlen) {
 		start = get_val(data, &doffs, addr_size);
 		len = get_val(data, &doffs, len_size);
@@ -381,7 +385,19 @@ static void tz_res_mem(void *fdt)
 		uint8_t data[len + (addr_size + len_size) * sizeof(uint32_t)];
 		size_t dlen = sizeof(data);
 
-		tz_res_mem_carve(prop, len, addr_size, len_size, data, &dlen);
+		tz_res_mem_carve(prop, len, addr_size, len_size, data, &dlen,
+				TZ_RES_MEM_START, TZ_RES_MEM_SIZE);
+
+		r = fdt_setprop(fdt, offs, "reg", data, dlen);
+		CHECK(r < 0);
+	}
+
+	{
+		uint8_t data[len + (addr_size + len_size) * sizeof(uint32_t)];
+		size_t dlen = sizeof(data);
+
+		tz_res_mem_carve(prop, len, addr_size, len_size, data, &dlen,
+				SMAF_RES_MEM_START, SMAF_RES_MEM_SIZE);
 
 		r = fdt_setprop(fdt, offs, "reg", data, dlen);
 		CHECK(r < 0);
